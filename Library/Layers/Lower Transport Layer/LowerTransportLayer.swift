@@ -731,9 +731,7 @@ private extension LowerTransportLayer {
     ///
     /// - parameter sequenceZero: The key to get segments from the map.
     func sendSegments(for sequenceZero: UInt16) {
-        onMutex { [weak self] in
-            guard let self = self else { return }
-            guard let (destination, segments) = outgoingSegments[sequenceZero], segments.count > 0 else {
+        guard let (destination, segments) = outgoingSegments[sequenceZero], segments.count > 0 else {
                 return
             }
             
@@ -758,7 +756,6 @@ private extension LowerTransportLayer {
                     self.startMulticastRetransmissionsTimer(for: sequenceZero)
                 }
             }
-        }
     }
     
     /// Sends the given segments one by one with an interval determined by the segment
@@ -768,7 +765,7 @@ private extension LowerTransportLayer {
     func sendSegments(_ segments: [SegmentedMessage]) async {
         onMutex { [weak self] in
             guard let self = self else { return }
-            
+
             // The interval with which segments are sent by the lower transport layer.
             guard let segmentTransmissionInterval = networkManager?.networkParameters.segmentTransmissionInterval else {
                 return

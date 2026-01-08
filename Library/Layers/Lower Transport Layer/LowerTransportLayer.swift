@@ -131,9 +131,6 @@ internal class LowerTransportLayer {
     ///
     /// The key is the `sequenceZero` of the message.
     private var segmentTtl: [UInt16 : UInt8]
-
-    // f.k fix
-    private var unFairLock = os_unfair_lock_s()
     
     init(_ networkManager: NetworkManager) {
         self.networkManager = networkManager
@@ -219,8 +216,8 @@ internal class LowerTransportLayer {
             // Process the message on the original queue.
             switch message {
             case .lowerTransportPdu(let pdu):
-                Task.detached { [weak self] in
-                    self?.networkManager?.upperTransportLayer.handle(lowerTransportPdu: pdu)
+                Task {
+                    self.networkManager?.upperTransportLayer.handle(lowerTransportPdu: pdu)
                 }
             case .acknowledgement(let ack):
                 handle(ack: ack)
@@ -275,12 +272,6 @@ internal class LowerTransportLayer {
     func send(segmentedUpperTransportPdu pdu: UpperTransportPdu,
               withTtl initialTtl: UInt8?,
               usingNetworkKey networkKey: NetworkKey) {
-        // f.k fix
-        os_unfair_lock_lock(&unFairLock)
-        defer {
-            os_unfair_lock_unlock(&unFairLock)
-        }
-
         guard let networkManager = networkManager,
               let provisionerNode = meshNetwork.localProvisioner?.node else {
             return
@@ -360,6 +351,9 @@ internal class LowerTransportLayer {
         }
     }
     
+    private func onMutex(_ block: @escaping () -> Void) {
+        mutex.async(execute: block)
+    }
 }
 
 private extension LowerTransportLayer {
@@ -613,12 +607,6 @@ private extension LowerTransportLayer {
     ///
     /// - parameter ack: The Segment Acknowledgment Message received.
     func handle(ack: SegmentAcknowledgmentMessage) {
-        // f.k fix
-        os_unfair_lock_lock(&unFairLock)
-        defer {
-            os_unfair_lock_unlock(&unFairLock)
-        }
-        
         // Ensure the ACK is for some message that has been sent.
         guard let networkManager = networkManager,
               let (destination, segments) = outgoingSegments[ack.sequenceZero],
@@ -745,17 +733,18 @@ private extension LowerTransportLayer {
         /// - note: When the destination is a Group or Virtual Address there are no
         ///         acknowledgments, in which case all segments are unacknowledged.
         let remainingSegments = segments.unacknowledged
-        
-        Task.detached { [weak self] in
-            await self?.sendSegments(remainingSegments)
-            
-            // When the last remaining segment has been sent, the lower transport
-            // layer should start the SAR Unicast Retransmissions timer or the
-            // SAR Multicast Retransmissions timer.
-            if destination.address.isUnicast {
-                self?.startUnicastRetransmissionsTimer(for: sequenceZero)
-            } else {
-                self?.startMulticastRetransmissionsTimer(for: sequenceZero)
+        onMutex {
+            Task {
+                await sendSegments(remainingSegments)
+                
+                // When the last remaining segment has been sent, the lower transport
+                // layer should start the SAR Unicast Retransmissions timer or the
+                // SAR Multicast Retransmissions timer.
+                if destination.address.isUnicast {
+                    startUnicastRetransmissionsTimer(for: sequenceZero)
+                } else {
+                    startMulticastRetransmissionsTimer(for: sequenceZero)
+                }
             }
         }
     }

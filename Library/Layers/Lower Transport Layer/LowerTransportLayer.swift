@@ -763,38 +763,34 @@ private extension LowerTransportLayer {
     ///
     /// - parameter segments: List of segments to be sent.
     func sendSegments(_ segments: [SegmentedMessage]) async {
-        onMutex { [weak self] in
-            guard let self = self else { return }
-
-            // The interval with which segments are sent by the lower transport layer.
-            guard let segmentTransmissionInterval = networkManager?.networkParameters.segmentTransmissionInterval else {
+        // The interval with which segments are sent by the lower transport layer.
+        guard let segmentTransmissionInterval = networkManager?.networkParameters.segmentTransmissionInterval else {
+            return
+        }
+        
+        // Start sending segments in the same order as they are in the list.
+        // Note: Each segment is sent with a delay, therefore each time we
+        //       check if the network manager still exists.
+        for segment in segments {
+            // Make sure the network manager is alive.
+            guard let networkManager = self.networkManager,
+                let networkLayer = networkManager.networkLayer else {
                 return
             }
-            
-            // Start sending segments in the same order as they are in the list.
-            // Note: Each segment is sent with a delay, therefore each time we
-            //       check if the network manager still exists.
-            for segment in segments {
-                // Make sure the network manager is alive.
-                guard let networkManager = self.networkManager,
-                    let networkLayer = networkManager.networkLayer else {
-                    return
-                }
-                // Make sure all the segments were not already acknowledged.
-                // The this will turn nil when all segments were acknowledged.
-                guard let ttl = segmentTtl[segment.sequenceZero] else {
-                    return
-                }
-                // Send the segment and wait the segment transmission interval.
-                do {
-                    self.logger?.d(.lowerTransport, "Sending \(segment)")
-                    try networkLayer.send(lowerTransportPdu: segment,
-                                        ofType: .networkPdu, withTtl: ttl)
-                    try await Task.sleep(seconds: segmentTransmissionInterval)
-                } catch {
-                    self.logger?.w(.lowerTransport, error)
-                    break
-                }
+            // Make sure all the segments were not already acknowledged.
+            // The this will turn nil when all segments were acknowledged.
+            guard let ttl = segmentTtl[segment.sequenceZero] else {
+                return
+            }
+            // Send the segment and wait the segment transmission interval.
+            do {
+                self.logger?.d(.lowerTransport, "Sending \(segment)")
+                try networkLayer.send(lowerTransportPdu: segment,
+                                    ofType: .networkPdu, withTtl: ttl)
+                try await Task.sleep(seconds: segmentTransmissionInterval)
+            } catch {
+                self.logger?.w(.lowerTransport, error)
+                break
             }
         }
     }

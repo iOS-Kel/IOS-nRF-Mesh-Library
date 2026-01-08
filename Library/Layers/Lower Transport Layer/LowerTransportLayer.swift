@@ -131,6 +131,9 @@ internal class LowerTransportLayer {
     ///
     /// The key is the `sequenceZero` of the message.
     private var segmentTtl: [UInt16 : UInt8]
+
+    // f.k fix
+    private var unFairLock = os_unfair_lock_s()
     
     init(_ networkManager: NetworkManager) {
         self.networkManager = networkManager
@@ -272,6 +275,12 @@ internal class LowerTransportLayer {
     func send(segmentedUpperTransportPdu pdu: UpperTransportPdu,
               withTtl initialTtl: UInt8?,
               usingNetworkKey networkKey: NetworkKey) {
+        // f.k fix
+        os_unfair_lock_lock(&unFairLock)
+        defer {
+            os_unfair_lock_unlock(&unFairLock)
+        }
+
         guard let networkManager = networkManager,
               let provisionerNode = meshNetwork.localProvisioner?.node else {
             return
@@ -604,6 +613,12 @@ private extension LowerTransportLayer {
     ///
     /// - parameter ack: The Segment Acknowledgment Message received.
     func handle(ack: SegmentAcknowledgmentMessage) {
+        // f.k fix
+        os_unfair_lock_lock(&unFairLock)
+        defer {
+            os_unfair_lock_unlock(&unFairLock)
+        }
+        
         // Ensure the ACK is for some message that has been sent.
         guard let networkManager = networkManager,
               let (destination, segments) = outgoingSegments[ack.sequenceZero],

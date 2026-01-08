@@ -735,15 +735,15 @@ private extension LowerTransportLayer {
         let remainingSegments = segments.unacknowledged
         onMutex {
             Task {
-                await sendSegments(remainingSegments)
+                await self.sendSegments(remainingSegments)
                 
                 // When the last remaining segment has been sent, the lower transport
                 // layer should start the SAR Unicast Retransmissions timer or the
                 // SAR Multicast Retransmissions timer.
                 if destination.address.isUnicast {
-                    startUnicastRetransmissionsTimer(for: sequenceZero)
+                    self.startUnicastRetransmissionsTimer(for: sequenceZero)
                 } else {
-                    startMulticastRetransmissionsTimer(for: sequenceZero)
+                    self.startMulticastRetransmissionsTimer(for: sequenceZero)
                 }
             }
         }
